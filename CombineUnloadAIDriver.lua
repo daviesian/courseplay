@@ -78,7 +78,7 @@ CombineUnloadAIDriver.myStates = {
 	FOLLOW_CHOPPER ={},
 	FOLLOW_TRACTOR = {},
 	DRIVE_BACK_FROM_REVERSING_CHOPPER ={},
-	DRIVE_BACK_FROM_EMPTY_COMBINE = {},
+	MOVE_BACK_FROM_EMPTY_COMBINE = {},
 	DRIVE_BACK_FROM_REVERSING_TRACTOR = {},
 	DRIVE_BACK_FULL ={},
 	HANDLE_CHOPPER_HEADLAND_TURN = {},
@@ -492,7 +492,7 @@ function CombineUnloadAIDriver:driveOnField(dt)
 			end
 		end
 
-	elseif self.onFieldState == self.states.DRIVE_BACK_FROM_EMPTY_COMBINE then
+	elseif self.onFieldState == self.states.MOVE_BACK_FROM_EMPTY_COMBINE then
 		-- drive back until the combine is in front of us
 		local _, _, dz = self:getDistanceFromCombine()
 		if dz > 0 then
@@ -572,13 +572,12 @@ function CombineUnloadAIDriver:driveBesideCombine()
 	-- use a factor to make sure we reach the pipe fast, but be more gentle while discharging
 	local factor = self.combineToUnload.cp.driver:isDischarging() and 0.5 or 2
 	local speed = self.combineToUnload.lastSpeedReal * 3600 + MathUtil.clamp(-dz * factor, -10, 15)
-  -- slow down while the pipe is unfoling to avoid crashing onto it
-  if self.combineToUnload.cp.driver.pipe.currentState ~= nil then
-    if self.combineToUnload.cp.driver.pipe.currentState == AIDriverUtil.PIPE_STATE_MOVING then
-      speed = (math.min(speed, self.combineToUnload:getLastSpeed()))
+
+  	-- slow down while the pipe is unfoling to avoid crashing onto it
+	if self.combineToUnload.cp.driver:isPipeMoving() then
+		speed = (math.min(speed, self.combineToUnload:getLastSpeed() + 2))
     end
-  end
-  
+
 	self:renderText(0, 0.02, "%s: driveBesideCombine: dz = %.1f, speed = %.1f, factor = %.1f",
 			nameNum(self.vehicle), dz, speed, factor)
 	if  courseplay.debugChannels[self.debugChannel] then
@@ -1771,10 +1770,8 @@ function CombineUnloadAIDriver:unloadStoppedCombine()
 			end
 		else
 			self:debug('finished unloading stopped combine, move back a bit to make room for it to continue')
-			local reverseCourse = self:getStraightReverseCourse()
-			self:startCourse(reverseCourse,1)
+			self:startMovingBackFromEmptyCombine()
 			self.ppc:setNormalLookaheadDistance()
-			self:setNewOnFieldState(self.states.DRIVE_BACK_FROM_EMPTY_COMBINE)
 		end
 	else
 		self:driveBesideCombine()
@@ -1783,6 +1780,7 @@ end
 
 ------------------------------------------------------------------------------------------------------------------------
 -- Unload combine (moving)
+-- We are driving on a copy of the combine's course with an offset
 ------------------------------------------------------------------------------------------------------------------------
 function CombineUnloadAIDriver:unloadMovingCombine()
 
@@ -1811,9 +1809,11 @@ function CombineUnloadAIDriver:unloadMovingCombine()
 		--when the combine is in a pocket, make room to get back to course
 		if self.combineToUnload.cp.driver and self.combineToUnload.cp.driver:isWaitingInPocket() then
 			self:debug('combine empty and in pocket, drive back')
-			local reverseCourse = self:getStraightReverseCourse()
-			AIDriver.startCourse(self, reverseCourse,1)
-			self:setNewOnFieldState(self.states.DRIVE_BACK_FROM_EMPTY_COMBINE)
+			self:startMovingBackFromEmptyCombine()
+			return
+		elseif self.followCourse:isCloseToNextTurn(10) and not self.followCourse:isCloseToLastTurn(20) then
+			self:debug('combine empty and moving forward but we are too close to the end of the row, moving back')
+			self:startMovingBackFromEmptyCombine()
 			return
 		else
 			self:debug('combine empty and moving forward')
@@ -1838,18 +1838,28 @@ function CombineUnloadAIDriver:unloadMovingCombine()
 	-- when the combine is turning just don't move
 	if self.combineToUnload.cp.driver:isManeuvering() then
 		self:hold()
-	elseif not self:isOkToStartUnloadingCombine() then
+	elseif not self:isBehindAndAlignedToCombine() and not self:isInFrontAndAlignedToMovingCombine() then
 		local dx, _, dz = localToLocal(self.vehicle.rootNode, AIDriverUtil.getDirectionNode(self.combineToUnload), 0, 0, 0)
 		local pipeOffset = self:getPipeOffset(self.combineToUnload)
 		local sameDirection = TurnContext.isSameDirection(AIDriverUtil.getDirectionNode(self.vehicle),
 			AIDriverUtil.getDirectionNode(self.combineToUnload), 15)
 		local willWait = self.combineToUnload.cp.driver:willWaitForUnloadToFinish()
 		self:info('not in a good position to unload, trying to recover')
-		self:info('dx = %.2f, dz = %.2f, offset = %.2f, sameDir = %s, willWait = %s', dx, dz, pipeOffset, tostring(sameDirection), tostring(willWait))
+		self:info('dx = %.2f, dz = %.2f, offset = %.2f, sameDir = %s', dx, dz, pipeOffset, tostring(sameDirection))
 		-- switch to driving only when not holding for maneuvering combine
 		-- for some reason (like combine turned) we are not in a good position anymore then set us up again
 		self:startDrivingToCombine()
 	end
+end
+
+------------------------------------------------------------------------------------------------------------------------
+-- Start moving back from empty combine
+------------------------------------------------------------------------------------------------------------------------
+function CombineUnloadAIDriver:startMovingBackFromEmptyCombine()
+	local reverseCourse = self:getStraightReverseCourse()
+	AIDriver.startCourse(self, reverseCourse, 1)
+	self:setNewOnFieldState(self.states.MOVE_BACK_FROM_EMPTY_COMBINE)
+	return
 end
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -2075,7 +2085,7 @@ function CombineUnloadAIDriver:onBlockingOtherVehicle(blockedVehicle)
 	end
 	if self.onFieldState ~= self.states.MOVING_OUT_OF_WAY and
 			self.onFieldState ~= self.states.DRIVE_BACK_FROM_REVERSING_CHOPPER and
-			self.onFieldState ~= self.states.DRIVE_BACK_FROM_EMPTY_COMBINE and
+			self.onFieldState ~= self.states.MOVE_BACK_FROM_EMPTY_COMBINE and
 			self.onFieldState ~= self.states.HANDLE_CHOPPER_HEADLAND_TURN and
 			self.onFieldState ~= self.states.HANDLE_CHOPPER_180_TURN and
 			self.onFieldState ~= self.states.DRIVE_BACK_FULL
