@@ -1823,11 +1823,6 @@ function CombineUnloadAIDriver:unloadMovingCombine()
 		end
 	end
 
-	-- don't move until ready to unload
-	if not self.combineToUnload.cp.driver:isReadyToUnload(self.vehicle.cp.settings.useRealisticDriving:is(true)) then
-		self:setSpeed(0)
-	end
-
 	-- combine stopped in the meanwhile, like for example end of course
 	if self.combineToUnload.cp.driver:willWaitForUnloadToFinish() then
 		self:debug('change to unload stopped combine')
