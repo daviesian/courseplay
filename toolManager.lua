@@ -247,6 +247,9 @@ function courseplay:isTrailer(workTool)
 	return workTool.typeName:match("trailer");
 end;
 
+--no idea, what's the use of this function ? 
+--maybe update allowed implements at run time ?
+--TODO: consolidate with courseplay:getIsToolCombiValidForCpMode()
 -- UPDATE WORKTOOL DATA
 function courseplay:updateWorkTools(vehicle, workTool, isImplement)
 	if not isImplement then
@@ -276,7 +279,7 @@ function courseplay:updateWorkTools(vehicle, workTool, isImplement)
 		end; 
 	-- MODE 3: AUGERWAGON
 	elseif vehicle.cp.mode == 3 then
-		if workTool.cp.isAugerWagon then
+		if SpecializationUtil.hasSpecialization(Pipe, workTool.specializations) and SpecializationUtil.hasSpecialization(Trailer, workTool.specializations) then
 			hasWorkTool = true;
 			vehicle.cp.workTools[#vehicle.cp.workTools + 1] = workTool;
 		end
