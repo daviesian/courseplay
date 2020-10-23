@@ -3015,7 +3015,7 @@ function SiloSelectedFillTypeSetting:cleanUpOldFillTypes(noEventSend)
 end
 
 function SiloSelectedFillTypeSetting:validateCurrentValue()
-	self:cleanUpOldFillTypes(true)
+	self:cleanUpOldFillTypes()
 end
 
 
@@ -3025,7 +3025,7 @@ function SiloSelectedFillTypeSetting:checkSelectedFillTypes(supportedFillTypes,c
 		if supportedFillTypes[data.fillType] then --already selected fillTypes disable multi select
 			supportedFillTypes[data.fillType]=0
 		elseif cleanUp then	--delete not supported fillTypes 
-			self:deleteByIndex(index) 
+			self:deleteByIndex(index,true) 
 			return self:checkSelectedFillTypes(supportedFillTypes,cleanUp)
 		end
 	end
