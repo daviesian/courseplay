@@ -910,7 +910,7 @@ end;
 
 function courseplay:onUpdate(dt)	
 	if g_server == nil and self.isPostSynced == nil then 
-		self.cp.driver:postSync()
+	--	self.cp.driver:postSync()
 		self.isPostSynced=true
 	end
 
@@ -1356,21 +1356,24 @@ function courseplay:onWriteUpdateStream(streamId, connection, dirtyMask)
 			self.cp.driver:writeUpdateStream(streamId, connection, dirtyMask)
 		end 
 		if streamWriteBool(streamId, self:getIsCourseplayDriving() or false) then
-			if self.cp.waypointIndex then
+			if self.cp.waypointIndex and self.cp.waypointIndex ~= self.cp.waypointIndexSend then
 				streamWriteBool(streamId,true)
 				streamWriteInt32(streamId,self.cp.waypointIndex)
+				self.cp.waypointIndexSend = self.cp.waypointIndex
 			else 
 				streamWriteBool(streamId,false)
 			end
-			if self.cp.infoText then
+			if self.cp.infoText and self.cp.infoText ~= self.cp.infoTextSend then
 				streamWriteBool(streamId,true)
 				streamWriteString(streamId,self.cp.infoText)
+				self.cp.infoTextSend = self.cp.infoText
 			else 
 				streamWriteBool(streamId,false)
 			end
-			if self.cp.currentCourseName then
+			if self.cp.currentCourseName and self.cp.currentCourseName ~= self.cp.currentCourseNameSend then
 				streamWriteBool(streamId,true)
 				streamWriteString(streamId,self.cp.currentCourseName)
+				self.cp.currentCourseNameSend =  self.cp.currentCourseName
 			else 
 				streamWriteBool(streamId,false)
 			end

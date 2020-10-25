@@ -3582,39 +3582,114 @@ function AssignedCombinesSetting:init(vehicle)
 	Setting.init(self, 'assignedCombines','-', '-', vehicle) 
 	self.MAX_COMBINES_FOR_PAGE = 5
 	self.offsetHead = 0
-	self.table = {}
-	self.lastPossibleCombines = {}
+	self.combineObjects = {}
+	self.combineObjectsMuliplayer = {}
+end
+
+function AssignedCombinesSetting:onWriteStream(stream)
+	streamWriteUIntN(streamId,#self.combineObjectsMuliplayer,4)
+	for i=1,#self.combineObjectsMuliplayer do 
+		streamWriteString(streamId,self.combineObjectsMuliplayer[i].name)
+		streamWriteUInt8(streamId,self.combineObjectsMuliplayer[i].fieldNumber)
+		streamWriteBool(streamId,self.combineObjectsMuliplayer[i].isActive)
+	end
+end
+
+function AssignedCombinesSetting:onReadStream(stream)
+	self.combineObjectsMuliplayer = {}
+	for i=1,streamReadUIntN(streamId,4) do 
+		self.combineObjectsMuliplayer[i] = {}
+		self.combineObjectsMuliplayer[i].name = streamWriteString(streamId)
+		self.combineObjectsMuliplayer[i].fieldNumber = streamWriteUInt8(streamId)
+		self.combineObjectsMuliplayer[i].isActive = streamWriteBool(streamId)
+	end
+end
+
+function AssignedCombinesSetting:writeUpdateStream(streamId)
+	if self.needsSync then 
+		streamWriteBool(streamId,true)
+		streamWriteUIntN(streamId,#self.combineObjectsMuliplayer,4)
+		for i=1,#self.combineObjectsMuliplayer do 
+			streamWriteString(streamId,self.combineObjectsMuliplayer[i].name)
+			streamWriteUInt8(streamId,self.combineObjectsMuliplayer[i].fieldNumber)
+			streamWriteBool(streamId,self.combineObjectsMuliplayer[i].isActive)
+		end
+	else 
+		streamWriteBool(streamId,false)
+	end
+end
+
+function AssignedCombinesSetting:readUpdateStream(streamId)
+	if streamReadBool(streamId) then 
+		self.combineObjectsMuliplayer = {}
+		for i=1,streamReadUIntN(streamId,4) do 
+			self.combineObjectsMuliplayer[i] = {}
+			self.combineObjectsMuliplayer[i].name = streamWriteString(streamId)
+			self.combineObjectsMuliplayer[i].fieldNumber = streamWriteUInt8(streamId)
+			self.combineObjectsMuliplayer[i].isActive = streamWriteBool(streamId)
+		end
+		self.vehicle.cp.driver:refreshHUD()
+	end
 end
 
 function AssignedCombinesSetting:getPossibleCombines()
-	return g_combineUnloadManager:getPossibleCombines(self.vehicle)
+	if g_server then 
+		local possibleCombines = g_combineUnloadManager:getPossibleCombines(self.vehicle)
+		for index,combine in ipairs(g_combineUnloadManager:getPossibleCombines(self.vehicle)) do
+			if self.combineObjectsMuliplayer[index] == nil or self.combineObjectsMuliplayer[index].name ~= combine.name or  self.combineObjectsMuliplayer[index].isActive ~= self.combineObjects[combine] then 
+				self.combineObjectsMuliplayer[index] = {}
+				self.combineObjectsMuliplayer[index].name = combine.name
+				self.combineObjectsMuliplayer[index].fieldNumber = g_combineUnloadManager:getFieldNumber(combine)
+				self.combineObjectsMuliplayer[index].isActive = self.combineObjects[combine]
+				self.needsSync = true
+			end
+		end
+		if self.needsSync then 
+			self.vehicle.cp.driver:refreshHUD()
+		end
+		return possibleCombines
+	else 
+		return self.combineObjectsMuliplayer
+	end
 end
 
 --enables/disables connection between combine/tractor
-function AssignedCombinesSetting:toggleAssignedCombine(index,noEventSend)
-	local newIndex = index-2+self.offsetHead
-	local possibleCombines = self:getPossibleCombines()
-	local combine =	possibleCombines[newIndex]
-	if combine then 
-		self:toggleDataByIndex(combine)
+function AssignedCombinesSetting:toggleAssignedCombine(index,forceIndex)
+	local newIndex = forceIndex and index or index-2+self.offsetHead
+	local combineObjects = self:getPossibleCombines()
+	local combineObject = combineObjects[newIndex]
+	if combineObject then 
+		if g_server then 
+			if self.combineObjects[combineObject] then 
+				self.combineObjects[combineObject] = nil
+			else 
+				self.combineObjects[combineObject] = true
+			end
+			self.vehicle.cp.driver:refreshHUD()
+		else 
+			AssignedCombinesEvents:sendEvent(self.vehicle,self.NetworkTypes.TOGGLE,newIndex)
+		end
 	end
-	if not noEventSend then 
-		AssignedCombinesEvents:sendEvent(self.vehicle,self.NetworkTypes.TOGGLE,index)
-	end
-	self.vehicle.cp.driver:refreshHUD()
 end
 
 function AssignedCombinesSetting:getTexts()
 	local x = 1+self.offsetHead
 	local line = 1
 	local texts = {}
+	local combineObjects = self:getPossibleCombines()
 	for i=x,self.MAX_COMBINES_FOR_PAGE+x do 
-		local possibleCombines = self:getPossibleCombines()
-		self:clearInactiveCombines(possibleCombines)
-		if possibleCombines[i] then
-			local combine = possibleCombines[i]
-			local fieldNumber = g_combineUnloadManager:getFieldNumber(combine)
-			local box = self:getDataByIndex(combine) and "[X]"or "[  ]"
+		local combine = combineObjects[line]
+		if combine then
+			local fieldNumber
+			local combineIsActive 
+			if g_server then 
+				combineIsActive = self.combineObjects[combine]
+				fieldNumber = g_combineUnloadManager:getFieldNumber(combine)
+			else 
+				combineIsActive = combine.isActive
+				fieldNumber = combine.fieldNumber
+			end
+			local box = combineIsActive and "[X]"or "[  ]"
 			local text = string.format("%s %s (Field %d)",box, combine.name , fieldNumber)
 			texts[line] = text
 		else
@@ -3623,18 +3698,6 @@ function AssignedCombinesSetting:getTexts()
 		line = line +1
 	end
 	return texts
-end
-
---removes inactive combines connections 
-function AssignedCombinesSetting:clearInactiveCombines(possibleCombines)
-	local validCombines = {}
-	for index, combine in pairs(possibleCombines) do 
-		if self.table[combine] then 
-			validCombines[combine] = true
-		end
-	end
-	self.table = validCombines
-	self.vehicle.cp.driver:refreshHUD()
 end
 
 function AssignedCombinesSetting:allowedToChangeListOffsetUp()
@@ -3647,51 +3710,17 @@ function AssignedCombinesSetting:allowedToChangeListOffsetDown()
 end
 
 --move List up/down
-function AssignedCombinesSetting:changeListOffset(x,noEventSend)	
+function AssignedCombinesSetting:changeListOffset(x)	
 	if x>0 and self:allowedToChangeListOffsetUp() then 
 		self.offsetHead = self.offsetHead+1
 	elseif x<0 and self:allowedToChangeListOffsetDown() then 
 		self.offsetHead = self.offsetHead-1
 	end
-	if not noEventSend then 
-		AssignedCombinesEvents:sendEvent(self.vehicle,self.NetworkTypes.CHANGE_OFFSET,x)
-	end
 	self.vehicle.cp.driver:refreshHUD()
 end
 
-function AssignedCombinesSetting:sendPostSyncRequestEvent()
-	RequestAssignedCombinesPostSyncEvent:sendEvent(self.vehicle)
-end
-
-function AssignedCombinesSetting:sendPostSyncEvent(connection)
-	connection:sendEvent(AssignedCombinesPostSyncEvent:new(self.vehicle,self:getData(),self.offsetHead))
-end
-
-function AssignedCombinesSetting:setNetworkValues(assignedCombines,offsetHead)
-	for combine,bool in pairs(assignedCombines) do
-		self:addElementByIndex(combine,true)
-	end
-	self.offsetHead = offsetHead
-end
-
-function AssignedCombinesSetting:addElementByIndex(index,data)
-	self.table[index] = data
-end
-
-function AssignedCombinesSetting:toggleDataByIndex(index)
-	if self.table[index] then 
-		self.table[index] = nil
-	else
-		self.table[index] = true
-	end
-end
-
-function AssignedCombinesSetting:getDataByIndex(index)
-	return self.table[index]
-end
-
 function AssignedCombinesSetting:getData()
-	return self.table
+	return self.combineObjects
 end
 
 ---@class ShowVisualWaypointsSetting : SettingList

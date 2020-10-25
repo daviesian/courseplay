@@ -115,6 +115,16 @@ function CombineUnloadAIDriver:getAssignedCombinesSetting()
 	return self.assignedCombinesSetting
 end
 
+function CombineUnloadAIDriver:writeUpdateStream(streamId, connection, dirtyMask)
+	AIDriver.writeUpdateStream(self,streamId, connection, dirtyMask)
+	self.assignedCombinesSetting:writeUpdateStream(streamId)
+end 
+
+function CombineUnloadAIDriver:readUpdateStream(streamId, timestamp, connection)
+	AIDriver.readUpdateStream(self,streamId, timestamp, connection)
+	self.assignedCombinesSetting:readUpdateStream(streamId)
+end
+
 function CombineUnloadAIDriver:setHudContent()
 	AIDriver.setHudContent(self)
 	courseplay.hud:setCombineUnloadAIDriverContent(self.vehicle,self.assignedCombinesSetting)
