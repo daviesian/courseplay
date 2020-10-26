@@ -3640,7 +3640,7 @@ function AssignedCombinesSetting:getPossibleCombines()
 				self.combineObjectsMuliplayer[index] = {}
 				self.combineObjectsMuliplayer[index].name = combine.name
 				self.combineObjectsMuliplayer[index].fieldNumber = g_combineUnloadManager:getFieldNumber(combine)
-				self.combineObjectsMuliplayer[index].isActive = self.combineObjects[combine]
+				self.combineObjectsMuliplayer[index].isActive = self.combineObjects[combine] or false
 				self.needsSync = true
 			end
 		end

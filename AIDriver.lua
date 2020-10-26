@@ -206,7 +206,6 @@ function AIDriver:writeUpdateStream(streamId, connection, dirtyMask)
 	else 
 		streamWriteBool(streamId,false)
 	end
---	streamWriteBool(streamId,self.vehicle.cp.isDriving)
 end 
 
 function AIDriver:readUpdateStream(streamId, timestamp, connection)
@@ -216,7 +215,6 @@ function AIDriver:readUpdateStream(streamId, timestamp, connection)
 		self.state = self.states[nameState]
 		self.active = streamReadBool(streamId)
 	end
---	self.vehicle.cp.isDriving = streamReadBool(streamId)
 end
 
 function AIDriver:postSync()
