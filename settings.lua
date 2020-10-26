@@ -3678,7 +3678,7 @@ function AssignedCombinesSetting:getTexts()
 	local texts = {}
 	local combineObjects = self:getPossibleCombines()
 	for i=x,self.MAX_COMBINES_FOR_PAGE+x do 
-		local combine = combineObjects[line]
+		local combine = combineObjects[i]
 		if combine then
 			local fieldNumber
 			local combineIsActive 
